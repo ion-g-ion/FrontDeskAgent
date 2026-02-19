@@ -1,9 +1,9 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
-name: Example add-on
+name: FrontDeskAgent
 version: "1.2.0"
-slug: example
-description: Example add-on
-url: "https://github.com/home-assistant/addons-example/tree/main/example"
+slug: frontdeskagent
+description: FrontDeskAgent add-on
+url: "https://github.com/ion-g-ion/FrontDeskAgent/tree/main/frontdeskagent"
 arch:
   - aarch64
   - amd64
@@ -14,4 +14,4 @@ options:
   message: "Hello world..."
 schema:
   message: "str?"
-image: "ghcr.io/home-assistant/{arch}-addon-example"
+image: "ghcr.io/ion-g-ion/{arch}-addon-frontdeskagent"
