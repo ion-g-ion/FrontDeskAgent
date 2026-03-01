@@ -1,6 +1,6 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
-## 0.9.0
+## 0.9.1
 
 - Major structural rewrite introducing an asynchronous core loop.
 - Split audio (FFmpeg/WebRTC) and LLM (Gemini) logic into separate decoupled modules.

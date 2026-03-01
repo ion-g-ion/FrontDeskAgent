@@ -18,7 +18,7 @@ RUN apk add --no-cache \
     linux-headers
 
 COPY requirements.txt /
-RUN pip install --no-cache-dir -r /requirements.txt --break-system-packages
+RUN pip install --no-cache-dir -r /requirements.txt
 
 # Copy root filesystem
 COPY rootfs /
