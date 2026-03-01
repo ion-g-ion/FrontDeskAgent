@@ -18,7 +18,7 @@
     {
       "label": "Start Addon",
       "type": "shell",
-      "command": "ha addons stop \"local_${input:addonName}\"; ha addons start \"local_${input:addonName}\"; docker logs --follow \"addon_local_${input:addonName}\"",
+      "command": "ha apps stop \"local_${input:addonName}\"; ha apps start \"local_${input:addonName}\"; docker logs --follow \"addon_local_${input:addonName}\"",
       "group": {
         "kind": "test",
         "isDefault": false
@@ -35,9 +35,23 @@
     {
       "label": "Rebuild and Start Addon",
       "type": "shell",
-      "command": "ha addons rebuild --force \"local_${input:addonName}\"; ha addons start \"local_${input:addonName}\"; docker logs --follow \"addon_local_${input:addonName}\"",
+      "command": "ha apps rebuild --force \"local_${input:addonName}\"; ha apps start \"local_${input:addonName}\"; docker logs --follow \"addon_local_${input:addonName}\"",
       "group": {
         "kind": "test",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Install Addon",
+      "type": "shell",
+      "command": "ha apps install --local /mnt/supervisor/addons/local/FrontDeskAgent",
+      "group": {
+        "kind": "build",
         "isDefault": false
       },
       "presentation": {

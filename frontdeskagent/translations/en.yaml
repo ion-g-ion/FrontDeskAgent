@@ -1,4 +1,45 @@
 configuration:
-  message:
-    name: Message
-    description: The message that will be printed to the log when starting this add-on.
+  gemini_api_key:
+    name: Gemini API key
+    description: API key used to authenticate FrontDeskAgent with Gemini Live API.
+  model:
+    name: Gemini model
+    description: Select the Gemini model used for live audio conversations.
+  cameras:
+    name: Cameras
+    description: Add one or more cameras for FrontDeskAgent to monitor.
+    schema:
+      camera_name:
+        name: Camera name
+        description: Friendly camera name used for dynamic Home Assistant entities.
+      go2rtc_host:
+        name: go2rtc host
+        description: Hostname or IP address of the go2rtc instance.
+      go2rtc_api_port:
+        name: go2rtc API port
+        description: HTTP API/WebRTC port exposed by go2rtc.
+      go2rtc_rtsp_port:
+        name: go2rtc RTSP port
+        description: RTSP port exposed by go2rtc.
+      stream_name:
+        name: Stream name
+        description: Camera stream name configured in go2rtc.
+      description:
+        name: Camera description
+        description: Plain-language description of this camera view for the LLM.
+      camera_prompt:
+        name: Camera prompt
+        description: Camera-specific prompt instructions appended for this stream.
+  prompt:
+    name: Prompt
+    description: Global prompt sections used to build the assistant identity.
+    schema:
+      identity:
+        name: General identity
+        description: Who the front desk agent is and how it should behave.
+      home_description:
+        name: Home description
+        description: Context about the home that should be shared with the LLM.
+      language_spoken:
+        name: Language spoken
+        description: Preferred spoken language for visitor conversations.

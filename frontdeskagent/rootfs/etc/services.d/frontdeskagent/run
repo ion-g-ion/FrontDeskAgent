@@ -4,16 +4,18 @@
 # s6-overlay docs: https://github.com/just-containers/s6-overlay
 # ==============================================================================
 
-# Add your code here
+bashio::log.info "Starting FrontDeskAgent config bridge"
 
-# Declare variables
-declare message
+INTEGRATION_SOURCE_DIR="/opt/frontdeskagent/custom_components/frontdeskagent"
+INTEGRATION_TARGET_DIR="/config/custom_components/frontdeskagent"
 
-## Get the 'message' key from the user config options.
-message=$(bashio::config 'message')
+if [ -d "${INTEGRATION_SOURCE_DIR}" ]; then
+  mkdir -p "/config/custom_components"
+  rm -rf "${INTEGRATION_TARGET_DIR}"
+  cp -R "${INTEGRATION_SOURCE_DIR}" "${INTEGRATION_TARGET_DIR}"
+  bashio::log.info "Synced FrontDeskAgent integration to ${INTEGRATION_TARGET_DIR}"
+else
+  bashio::log.warning "Integration source not found at ${INTEGRATION_SOURCE_DIR}"
+fi
 
-## Print the message the user supplied, defaults to "Hello World..."
-bashio::log.info "${message:="Hello World..."}"
-
-## Run your program
-exec /usr/bin/my_program
+exec python3 /usr/bin/main.py

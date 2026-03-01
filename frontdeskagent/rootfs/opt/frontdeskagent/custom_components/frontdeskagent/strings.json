@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FrontDeskAgent",
+        "description": "Set up FrontDeskAgent camera trigger entities."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only a single FrontDeskAgent instance is allowed."
+    }
+  },
+  "entity": {
+    "button": {
+      "camera_trigger": {
+        "name": "Trigger"
+      }
+    }
+  }
+}

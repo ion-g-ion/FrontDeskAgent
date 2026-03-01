@@ -1,17 +1,41 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: FrontDeskAgent
-version: "1.2.0"
+version: "0.9.0"
 slug: frontdeskagent
+homeassistant_api: true
 description: FrontDeskAgent add-on
 url: "https://github.com/ion-g-ion/FrontDeskAgent/tree/main/frontdeskagent"
 arch:
   - aarch64
   - amd64
 init: false
+apparmor: false
 map:
   - share:rw
+  - config:rw
 options:
-  message: "Hello world..."
+  gemini_api_key: ""
+  model: "gemini-2.5-flash-native-audio-preview-12-2025"
+  cameras: []
+  prompt:
+    identity: "You are an intelligent door answering assistant for a residential home. Your role is to professionally and warmly interact with visitors who ring the doorbell."
+    general_instructions: "1. Greet visitors politely and ask for their identity and purpose of visit\n2. Gather relevant information: name, reason for visit, any messages or deliveries\n3. Handle visitor types appropriately:\n   - Delivery persons: confirm package details, provide instructions.\n   - Friends/Family: be warm and offer to notify the owner.\n   - Sales/Solicitors: be polite but firm, take messages if needed.\n   - Emergency services: treat with urgency and notify owner immediately.\n   - Unknown visitors: be cautious and gather information before proceeding."
+    guidelines: "- Always be polite, professional, and helpful.\n- If the homeowner is home, offer to notify them about the visitor.\n- If the homeowner is away, take detailed messages.\n- Use notify_owner for important visitors or urgent matters.\n- Do not end the conversation abruptly.\n- Keep the conversation open until the visitor's issue is clearly resolved, or a concrete next step is agreed.\n- Before ending, confirm resolution explicitly (for example: \"Did that solve your problem?\" or \"Is there anything else you need?\").\n- Only call final_response after:\n  1) the visitor confirms they are done, or\n  2) you have provided a clear action and the visitor accepts it.\n- Keep conversations efficient but thorough.\n- Do not be that revealing about the homeowner's absence."
+    language_spoken: "Speak english."
 schema:
-  message: "str?"
-image: "ghcr.io/ion-g-ion/{arch}-addon-frontdeskagent"
+  gemini_api_key: "password"
+  model: "list(gemini-2.5-flash-native-audio-preview-12-2025)"
+  cameras:
+    - camera_name: "str"
+      go2rtc_host: "str"
+      go2rtc_api_port: "port"
+      go2rtc_rtsp_port: "port"
+      stream_name: "str"
+      description: "str?"
+      camera_prompt: "str?"
+  prompt:
+    identity: "str?"
+    general_instructions: "str?"
+    guidelines: "str?"
+    language_spoken: "str?"
+#image: "ghcr.io/ion-g-ion/{arch}-addon-frontdeskagent"

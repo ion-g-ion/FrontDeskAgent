@@ -8,5 +8,17 @@ RUN \
     curl -sSLf -o /usr/bin/tempio \
     "https://github.com/home-assistant/tempio/releases/download/${TEMPIO_VERSION}/tempio_${BUILD_ARCH}"
 
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    ffmpeg \
+    gcc \
+    python3-dev \
+    musl-dev \
+    linux-headers
+
+COPY requirements.txt /
+RUN pip install --no-cache-dir -r /requirements.txt --break-system-packages
+
 # Copy root filesystem
 COPY rootfs /
