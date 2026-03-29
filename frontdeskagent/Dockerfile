@@ -1,6 +1,6 @@
-# https://developers.home-assistant.io/docs/add-ons/configuration#add-on-dockerfile
-ARG BUILD_FROM
-FROM $BUILD_FROM
+# https://developers.home-assistant.io/docs/add-ons/
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.14-alpine3.22-2026.03.1
+FROM ${BUILD_FROM}
 
 # Execute during the build of the image
 ARG TEMPIO_VERSION BUILD_ARCH
