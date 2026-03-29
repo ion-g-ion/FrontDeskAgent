@@ -21,7 +21,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up FrontDeskAgent text entity."""
-    async_add_entities([FrontDeskAgentStatusText()])
+    async_add_entities([
+        FrontDeskAgentStatusText(),
+        FrontDeskAgentNotificationText(),
+    ])
 
 
 class FrontDeskAgentStatusText(TextEntity):
@@ -44,5 +47,28 @@ class FrontDeskAgentStatusText(TextEntity):
 
     async def async_set_value(self, value: str) -> None:
         """Set the text value."""
+        self._attr_native_value = value
+        self.async_write_ha_state()
+
+
+class FrontDeskAgentNotificationText(TextEntity):
+    """Text entity storing latest owner notification content."""
+
+    _attr_has_entity_name = True
+    _attr_unique_id = f"{DOMAIN}_notification"
+    _attr_name = "Notification"
+    _attr_native_value = ""
+    _attr_icon = "mdi:message-alert-outline"
+
+    def __init__(self) -> None:
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, DEVICE_ID)},
+            name="FrontDeskAgent",
+            manufacturer="FrontDeskAgent",
+            model="Door Front Desk Agent",
+        )
+
+    async def async_set_value(self, value: str) -> None:
+        """Set the notification content."""
         self._attr_native_value = value
         self.async_write_ha_state()

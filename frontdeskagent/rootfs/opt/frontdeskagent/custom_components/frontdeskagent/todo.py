@@ -1,4 +1,4 @@
-"""Todo list entity for tracking FrontDeskAgent interactions."""
+"""Todo list entities for FrontDeskAgent."""
 
 from __future__ import annotations
 
@@ -22,8 +22,9 @@ from .const import DEVICE_ID, DOMAIN
 
 LOGGER = logging.getLogger(__name__)
 
-STORAGE_KEY = f"{DOMAIN}.interactions"
 STORAGE_VERSION = 1
+STORAGE_KEY_PAST_CONVERSATIONS = f"{DOMAIN}.past_conversations"
+STORAGE_KEY_EXPECTED_VISITORS = f"{DOMAIN}.expected_visitors"
 
 
 async def async_setup_entry(
@@ -31,15 +32,28 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the FrontDeskAgent interactions todo list."""
-    store = Store[dict[str, Any]](hass, STORAGE_VERSION, STORAGE_KEY)
-    entity = FrontDeskAgentTodoList(store)
-    await entity.async_load()
-    async_add_entities([entity])
+    """Set up FrontDeskAgent todo lists."""
+    entities = [
+        FrontDeskAgentTodoList(
+            store=Store[dict[str, Any]](hass, STORAGE_VERSION, STORAGE_KEY_PAST_CONVERSATIONS),
+            key_suffix="past_conversations",
+            name="Past Conversations",
+            icon="mdi:message-text-clock",
+        ),
+        FrontDeskAgentTodoList(
+            store=Store[dict[str, Any]](hass, STORAGE_VERSION, STORAGE_KEY_EXPECTED_VISITORS),
+            key_suffix="expected_visitors",
+            name="Expected Visitors",
+            icon="mdi:account-clock",
+        ),
+    ]
+    for entity in entities:
+        await entity.async_load()
+    async_add_entities(entities)
 
 
 class FrontDeskAgentTodoList(TodoListEntity):
-    """Todo list that records each camera interaction as an item."""
+    """Todo list entity for FrontDeskAgent."""
 
     _attr_has_entity_name = True
     _attr_supported_features = (
@@ -49,11 +63,20 @@ class FrontDeskAgentTodoList(TodoListEntity):
         | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
     )
 
-    def __init__(self, store: Store[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        store: Store[dict[str, Any]],
+        *,
+        key_suffix: str,
+        name: str,
+        icon: str,
+    ) -> None:
         self._store = store
         self._items: list[TodoItem] = []
-        self._attr_unique_id = f"{DOMAIN}_interactions"
-        self._attr_name = "Interactions"
+        self._attr_unique_id = f"{DOMAIN}_{key_suffix}"
+        self._attr_name = name
+        self._attr_icon = icon
+        self._attr_entity_registry_enabled_default = True
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, DEVICE_ID)},
             name="FrontDeskAgent",

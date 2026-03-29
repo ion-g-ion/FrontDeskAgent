@@ -1,6 +1,6 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
-## 0.9.3
+## 0.9.4
 
 - Fix startup crash on Python 3.14+ by adding the `audioop-lts` compatibility package.
 - Improve default prompt formatting using YAML multiline blocks for easier prompt editing.

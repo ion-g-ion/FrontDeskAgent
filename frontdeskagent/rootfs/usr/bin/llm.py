@@ -112,9 +112,9 @@ class GeminiAgent:
                     result = {"status": "logged", "summary": summary}
                     should_close_session = True
                 elif fc.name == "notify_owner":
-                    # For now just log it or add functionality to send real notification
                     message = args.get("message", "")
                     important = args.get("important", False)
+                    await self.ha_client.set_notification_content(message)
                     logger.info(f"NOTIFY OWNER: {message} (Important: {important})")
                     result = {"status": "sent", "message": message}
                 elif fc.name == "fetch_conversation_history":

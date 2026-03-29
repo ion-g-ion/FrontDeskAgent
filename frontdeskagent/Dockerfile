@@ -12,13 +12,12 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     ffmpeg \
-    gcc \
+    build-base \
     python3-dev \
-    musl-dev \
     linux-headers
 
 COPY requirements.txt /
-RUN pip install --no-cache-dir -r /requirements.txt
+RUN pip install --no-cache-dir --no-binary=google-crc32c -r /requirements.txt
 
 # Copy root filesystem
 COPY rootfs /

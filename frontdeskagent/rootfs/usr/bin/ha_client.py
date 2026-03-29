@@ -7,6 +7,18 @@ from typing import AsyncGenerator
 
 logger = logging.getLogger("ha_client")
 
+HOME_STATUS_ENTITIES = [
+    "text.frontdeskagent_status",
+    "text.frontdeskagent_status_text",
+]
+CAMERA_STATE_ENTITY_TEMPLATE = "sensor.frontdeskagent_{camera_id}_status"
+CAMERA_STATE_ENTITY_TEMPLATE_LEGACY = "sensor.frontdeskagent_{camera_id}_sensor"
+PAST_CONVERSATIONS_ENTITY = "todo.frontdeskagent_past_conversations"
+NOTIFICATION_ENTITIES = [
+    "text.frontdeskagent_notification",
+    "text.frontdeskagent_notification_content",
+]
+
 class HomeAssistantClient:
     def __init__(self):
         self.supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "")
@@ -18,47 +30,64 @@ class HomeAssistantClient:
         }
 
     async def get_home_status(self) -> str:
-        """Fetch the current value of text.frontdeskagent_status."""
+        """Fetch current value of FrontDeskAgent status entity."""
         if not self.supervisor_token:
             return "away"
 
-        url = f"{self.api_base}/states/text.frontdeskagent_status_text"
         async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.headers) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return data.get("state", "away")
-                    else:
-                        logger.warning(f"Failed to get home status: {resp.status}")
-                        return "away"
-            except Exception as e:
-                logger.error(f"Error fetching home status: {e}")
-                return "away"
+            for entity_id in HOME_STATUS_ENTITIES:
+                url = f"{self.api_base}/states/{entity_id}"
+                try:
+                    async with session.get(url, headers=self.headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            return data.get("state", "away")
+                        if resp.status != 404:
+                            logger.warning(
+                                "Failed to get home status from %s: %s",
+                                entity_id,
+                                resp.status,
+                            )
+                except Exception as e:
+                    logger.error(f"Error fetching home status: {e}")
+                    return "away"
+        return "away"
 
     async def set_camera_state(self, camera_id: str, state: str) -> None:
         """Update sensor.frontdeskagent_{camera_id}_status."""
         if not self.supervisor_token:
             return
 
-        url = f"{self.api_base}/states/sensor.frontdeskagent_{camera_id}_sensor"
         payload = {"state": state}
         async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, headers=self.headers, json=payload) as resp:
-                    if resp.status not in (200, 201):
-                        logger.warning(f"Failed to set camera state: {resp.status}")
-            except Exception as e:
-                logger.error(f"Error setting camera state: {e}")
+            for template in (
+                CAMERA_STATE_ENTITY_TEMPLATE,
+                CAMERA_STATE_ENTITY_TEMPLATE_LEGACY,
+            ):
+                entity_id = template.format(camera_id=camera_id)
+                url = f"{self.api_base}/states/{entity_id}"
+                try:
+                    async with session.post(url, headers=self.headers, json=payload) as resp:
+                        if resp.status in (200, 201):
+                            return
+                        if resp.status != 404:
+                            logger.warning(
+                                "Failed to set camera state for %s: %s",
+                                entity_id,
+                                resp.status,
+                            )
+                except Exception as e:
+                    logger.error(f"Error setting camera state: {e}")
+                    return
 
     async def add_interaction_todo(self, camera_name: str, summary: str) -> None:
-        """Add the summary to todo.frontdeskagent_interactions."""
+        """Add the summary to todo.frontdeskagent_past_conversations."""
         if not self.supervisor_token:
             return
 
         url = f"{self.api_base}/services/todo/add_item"
         payload = {
-            "entity_id": "todo.frontdeskagent_interactions",
+            "entity_id": PAST_CONVERSATIONS_ENTITY,
             "item": f"{camera_name}: {summary}"
         }
         async with aiohttp.ClientSession() as session:
@@ -69,14 +98,37 @@ class HomeAssistantClient:
             except Exception as e:
                 logger.error(f"Error adding todo item: {e}")
 
+    async def set_notification_content(self, message: str) -> None:
+        """Write latest notify_owner message to FrontDeskAgent text entity."""
+        if not self.supervisor_token:
+            return
+
+        url = f"{self.api_base}/services/text/set_value"
+        async with aiohttp.ClientSession() as session:
+            for entity_id in NOTIFICATION_ENTITIES:
+                payload = {"entity_id": entity_id, "value": message}
+                try:
+                    async with session.post(url, headers=self.headers, json=payload) as resp:
+                        if resp.status == 200:
+                            return
+                        if resp.status != 404:
+                            logger.warning(
+                                "Failed to set notification content for %s: %s",
+                                entity_id,
+                                resp.status,
+                            )
+                except Exception as e:
+                    logger.error(f"Error setting notification content: {e}")
+                    return
+
     async def fetch_conversation_history(self, camera_name: str, limit: int = 5) -> str:
-        """Fetch the last N interaction summaries from the Todo list."""
+        """Fetch last N conversation summaries from past conversations list."""
         if not self.supervisor_token:
             return "No history available."
 
         url = f"{self.api_base}/services/todo/get_items"
         payload = {
-            "entity_id": "todo.frontdeskagent_interactions",
+            "entity_id": PAST_CONVERSATIONS_ENTITY,
         }
         async with aiohttp.ClientSession() as session:
             try:
