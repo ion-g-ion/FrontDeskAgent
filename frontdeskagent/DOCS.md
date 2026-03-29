@@ -5,6 +5,7 @@
 This add-on provides FrontDeskAgent functionality for Home Assistant.
 
 Configure your Gemini API key, model, cameras, and prompt sections in the add-on configuration UI.
+For larger prompt text, switch to YAML editing mode in the add-on config and use multiline values (`|-`).
 
 ## Camera settings fields
 
@@ -17,3 +18,16 @@ Each item in `cameras` represents one camera stream.
 - `stream_name`: Stream name defined in go2rtc (for example `doorbell`).
 - `description`: Natural-language description of what this camera sees; this is passed to the LLM as context.
 - `camera_prompt`: Extra camera-specific instructions for the LLM (for example behavior for this view).
+
+## Prompt editing tips
+
+- Home Assistant add-on form inputs for strings are rendered as single-line controls.
+- To edit larger prompts comfortably, open the add-on configuration YAML editor.
+- Use YAML multiline blocks for prompt values, for example:
+
+```yaml
+prompt:
+  identity: |-
+    You are a polite residential front desk agent.
+    Keep responses concise and friendly.
+```

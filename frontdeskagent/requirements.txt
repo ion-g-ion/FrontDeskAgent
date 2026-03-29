@@ -1,5 +1,6 @@
 aiohttp
 aiortc
+audioop-lts
 av
 google-genai
 numpy

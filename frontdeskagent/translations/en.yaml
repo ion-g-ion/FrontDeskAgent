@@ -32,14 +32,17 @@ configuration:
         description: Camera-specific prompt instructions appended for this stream.
   prompt:
     name: Prompt
-    description: Global prompt sections used to build the assistant identity.
+    description: Global prompt sections used to build assistant behavior. Use YAML mode for multiline prompt editing.
     schema:
       identity:
         name: General identity
-        description: Who the front desk agent is and how it should behave.
-      home_description:
-        name: Home description
-        description: Context about the home that should be shared with the LLM.
+        description: Who the front desk agent is and how it should behave. Supports multiline text in YAML mode.
+      general_instructions:
+        name: General instructions
+        description: Step-by-step behavior rules for the LLM. Supports multiline text in YAML mode.
+      guidelines:
+        name: Guidelines
+        description: Additional operating constraints for the LLM. Supports multiline text in YAML mode.
       language_spoken:
         name: Language spoken
-        description: Preferred spoken language for visitor conversations.
+        description: Preferred spoken language for visitor conversations. Supports multiline text in YAML mode.
