@@ -2,7 +2,7 @@
 
 ## 0.9.4
 
-- Fix startup crash on Python 3.14+ by adding the `audioop-lts` compatibility package.
+- Switch add-on base image to Python 3.12.
 - Improve default prompt formatting using YAML multiline blocks for easier prompt editing.
 - Update prompt translation labels to match active prompt keys.
 

@@ -1,6 +1,5 @@
 aiohttp
 aiortc
-audioop-lts
 av
 google-genai
 google-crc32c
