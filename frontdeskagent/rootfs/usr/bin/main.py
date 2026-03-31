@@ -18,7 +18,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-ALLOWED_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
+DEFAULT_MODEL = "gemini-live-2.5-flash-native-audio"
+SUPPORTED_MODELS = {
+    DEFAULT_MODEL,
+    "gemini-2.5-flash-native-audio-preview-12-2025",
+}
 OPTIONS_PATH = Path(os.getenv("FRONTDESK_OPTIONS_PATH", "/data/options.json"))
 CAMERAS_EXPORT_PATH = Path(
     os.getenv("FRONTDESK_CAMERAS_EXPORT_PATH", "/share/frontdeskagent/cameras.json")
@@ -66,9 +70,9 @@ def load_options(path: Path) -> dict[str, Any]:
 def normalize_runtime_config(options: dict[str, Any]) -> dict[str, Any]:
     gemini_api_key = _as_non_empty_str(options.get("gemini_api_key"), "gemini_api_key")
     model = _as_non_empty_str(options.get("model"), "model")
-    if model != ALLOWED_MODEL:
+    if model not in SUPPORTED_MODELS:
         raise ValueError(
-            f"Invalid 'model': '{model}'. Only '{ALLOWED_MODEL}' is supported."
+            f"Invalid 'model': '{model}'. Supported models: {', '.join(sorted(SUPPORTED_MODELS))}."
         )
 
     cameras = options.get("cameras")

@@ -77,6 +77,10 @@ class GeminiAgent:
         self.ha_client = ha_client
         self.camera_name = camera_name
         self.shutdown_requested = asyncio.Event()
+        self._session_resumption_handle = None
+        self._initial_message_sent = False
+        self._reconnect_backoff_seconds = 0.5
+        self._max_reconnect_backoff_seconds = 8.0
 
         # Build System Instruction
         identity = prompt_config.get("identity", "")
@@ -97,6 +101,40 @@ class GeminiAgent:
             "system_instruction": self.system_instruction,
             "tools": self.tools,
         }
+
+    @staticmethod
+    def _extract_value(container, *names):
+        for name in names:
+            if isinstance(container, dict) and name in container:
+                return container.get(name)
+            if hasattr(container, name):
+                return getattr(container, name)
+        return None
+
+    def _extract_session_resumption_handle(self, response):
+        update = self._extract_value(response, "session_resumption_update", "sessionResumptionUpdate")
+        if update is None:
+            return None
+        resumable = self._extract_value(update, "resumable")
+        new_handle = self._extract_value(update, "new_handle", "newHandle")
+        if resumable and new_handle:
+            return new_handle
+        return None
+
+    def _extract_go_away_time_left(self, response):
+        go_away = self._extract_value(response, "go_away", "goAway")
+        if not go_away:
+            return None
+        return self._extract_value(go_away, "time_left", "timeLeft")
+
+    def _build_connect_config(self):
+        connect_config = dict(self.config)
+        session_resumption = {}
+        if self._session_resumption_handle:
+            session_resumption["handle"] = self._session_resumption_handle
+        # Always include this so the server emits SessionResumptionUpdate tokens.
+        connect_config["session_resumption"] = session_resumption
+        return connect_config
 
     async def _handle_tool_call(self, session, tool_call):
         function_responses = []
@@ -135,61 +173,98 @@ class GeminiAgent:
             self.shutdown_requested.set()
 
     async def run(self, mic_queue: asyncio.Queue, speaker_queue: asyncio.Queue, speaker_track, home_status: str):
-        async with self.client.aio.live.connect(model=self.model, config=self.config) as session:
-            initial_message = (
-                f"Someone rang the doorbell. The homeowner is currently {home_status}. "
-                "Start the conversation politely and immediately."
-            )
-            await session.send_client_content(
-                turns={"parts": [{"text": initial_message}]}
-            )
-
-            async def send_audio():
-                while not self.shutdown_requested.is_set():
-                    try:
-                        msg = await asyncio.wait_for(mic_queue.get(), timeout=0.3)
-                    except asyncio.TimeoutError:
-                        continue
-
-                    try:
-                        # HALF-DUPLEX AEC Alternative: don't send mic audio if model is speaking
-                        if speaker_track and getattr(speaker_track, 'is_speaking', False):
-                            continue
-                        await session.send_realtime_input(audio=msg)
-                    except Exception as e:
-                        logger.warning(f"send_realtime_input failed: {e}")
-                        await asyncio.sleep(0.2)
-
-            async def receive_audio():
-                while not self.shutdown_requested.is_set():
-                    try:
-                        turn = session.receive()
-                        async for response in turn:
-                            if response.tool_call:
-                                await self._handle_tool_call(session, response.tool_call)
-                                continue
-
-                            if response.server_content and response.server_content.model_turn:
-                                for part in response.server_content.model_turn.parts:
-                                    if part.inline_data and isinstance(part.inline_data.data, bytes):
-                                        if speaker_queue.full():
-                                            try:
-                                                speaker_queue.get_nowait()
-                                            except asyncio.QueueEmpty:
-                                                pass
-                                        await speaker_queue.put(part.inline_data.data)
-                    except Exception as e:
-                        logger.warning(f"receive_model_audio error: {e}")
-                        await asyncio.sleep(0.2)
+        while not self.shutdown_requested.is_set():
+            reconnect_requested = asyncio.Event()
 
             try:
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(send_audio())
-                    tg.create_task(receive_audio())
-            finally:
-                self.shutdown_requested.set()
-                close_fn = getattr(session, "close", None)
-                if callable(close_fn):
-                    maybe_coro = close_fn()
-                    if asyncio.iscoroutine(maybe_coro):
-                        await maybe_coro
+                async with self.client.aio.live.connect(
+                    model=self.model,
+                    config=self._build_connect_config(),
+                ) as session:
+                    logger.info("Connected to Gemini Live API")
+                    self._reconnect_backoff_seconds = 0.5
+
+                    if not self._initial_message_sent:
+                        initial_message = (
+                            f"Someone rang the doorbell. The homeowner is currently {home_status}. "
+                            "Start the conversation politely and immediately."
+                        )
+                        await session.send_client_content(
+                            turns={"parts": [{"text": initial_message}]}
+                        )
+                        self._initial_message_sent = True
+
+                    async def send_audio():
+                        while not self.shutdown_requested.is_set() and not reconnect_requested.is_set():
+                            try:
+                                msg = await asyncio.wait_for(mic_queue.get(), timeout=0.3)
+                            except asyncio.TimeoutError:
+                                continue
+
+                            try:
+                                # HALF-DUPLEX AEC Alternative: don't send mic audio if model is speaking
+                                if speaker_track and getattr(speaker_track, "is_speaking", False):
+                                    continue
+                                await session.send_realtime_input(audio=msg)
+                            except Exception as e:
+                                logger.warning(f"send_realtime_input failed: {e}")
+                                reconnect_requested.set()
+                                break
+
+                    async def receive_audio():
+                        while not self.shutdown_requested.is_set() and not reconnect_requested.is_set():
+                            try:
+                                turn = session.receive()
+                                async for response in turn:
+                                    new_handle = self._extract_session_resumption_handle(response)
+                                    if new_handle and new_handle != self._session_resumption_handle:
+                                        self._session_resumption_handle = new_handle
+                                        logger.debug("Updated Gemini Live session resumption handle")
+
+                                    time_left = self._extract_go_away_time_left(response)
+                                    if time_left is not None:
+                                        logger.warning(
+                                            f"Gemini Live sent goAway (time_left={time_left}), reconnecting"
+                                        )
+                                        reconnect_requested.set()
+                                        break
+
+                                    if response.tool_call:
+                                        await self._handle_tool_call(session, response.tool_call)
+                                        continue
+
+                                    if response.server_content and response.server_content.model_turn:
+                                        for part in response.server_content.model_turn.parts:
+                                            if part.inline_data and isinstance(part.inline_data.data, bytes):
+                                                if speaker_queue.full():
+                                                    try:
+                                                        speaker_queue.get_nowait()
+                                                    except asyncio.QueueEmpty:
+                                                        pass
+                                                await speaker_queue.put(part.inline_data.data)
+                                if reconnect_requested.is_set():
+                                    break
+                            except Exception as e:
+                                logger.warning(f"receive_model_audio error: {e}")
+                                reconnect_requested.set()
+                                break
+
+                    async with asyncio.TaskGroup() as tg:
+                        tg.create_task(send_audio())
+                        tg.create_task(receive_audio())
+
+            except Exception as e:
+                logger.warning(f"Gemini Live connection failed: {e}")
+                reconnect_requested.set()
+
+            if self.shutdown_requested.is_set():
+                break
+
+            if reconnect_requested.is_set():
+                delay = self._reconnect_backoff_seconds
+                logger.info(f"Reconnecting Gemini Live in {delay:.1f}s")
+                await asyncio.sleep(delay)
+                self._reconnect_backoff_seconds = min(
+                    self._reconnect_backoff_seconds * 2,
+                    self._max_reconnect_backoff_seconds,
+                )
