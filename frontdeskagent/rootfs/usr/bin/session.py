@@ -4,6 +4,7 @@ from audio import CameraAudioIO
 from llm import GeminiAgent
 
 logger = logging.getLogger("session")
+CONVERSATION_TIMEOUT_SECONDS = 15 * 60
 
 class CameraSession:
     def __init__(self, camera_id: str, camera_config: dict, ha_client, gemini_api_key: str, model: str, prompt_config: dict):
@@ -35,13 +36,31 @@ class CameraSession:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self.audio_io.start_ffmpeg(self.mic_queue, self.shutdown_event))
                 tg.create_task(self.llm_agent.run(self.mic_queue, self.speaker_queue, self.audio_io.speaker_track, home_status))
-                
-                # Wait until shutdown requested by LLM or manual cancel
-                async def wait_for_shutdown():
-                    await self.llm_agent.shutdown_requested.wait()
+
+                # Stop session when one of these happens:
+                # 1) LLM finishes naturally, 2) manual cancel sets shutdown_event, 3) hard timeout.
+                async def watch_session_lifecycle():
+                    timeout_task = asyncio.create_task(asyncio.sleep(CONVERSATION_TIMEOUT_SECONDS))
+                    llm_done_task = asyncio.create_task(self.llm_agent.shutdown_requested.wait())
+                    shutdown_task = asyncio.create_task(self.shutdown_event.wait())
+                    done, pending = await asyncio.wait(
+                        {timeout_task, llm_done_task, shutdown_task},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+
+                    if timeout_task in done:
+                        logger.warning(
+                            f"Session timeout reached ({CONVERSATION_TIMEOUT_SECONDS}s) for camera: {self.camera_name}"
+                        )
+
                     self.shutdown_event.set()
-                
-                tg.create_task(wait_for_shutdown())
+                    self.llm_agent.shutdown_requested.set()
+
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+
+                tg.create_task(watch_session_lifecycle())
                 
         except Exception as e:
             logger.error(f"Error in CameraSession for {self.camera_name}: {e}")

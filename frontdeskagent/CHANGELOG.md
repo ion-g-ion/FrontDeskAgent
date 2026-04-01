@@ -1,6 +1,6 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
-## 0.9.5
+## 0.9.6
 
 - Add Gemini Live session resumption and reconnect handling for `goAway` and `1011` disconnects.
 - Add bounded reconnect backoff to keep conversations running after transient Live API errors.
