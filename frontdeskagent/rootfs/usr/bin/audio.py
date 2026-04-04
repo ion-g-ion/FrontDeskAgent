@@ -3,6 +3,7 @@ import audioop
 import fractions
 import logging
 import time
+from typing import Optional
 
 import aiohttp
 import numpy as np
@@ -18,6 +19,25 @@ GO2RTC_SEND_RATE = 8000
 CHANNELS = 1
 CHUNK_SIZE = 320
 SAMPLE_WIDTH = 2  # int16
+
+
+class _LocalSpeakerState:
+    """Tracks whether local speaker playback is currently active."""
+
+    def __init__(self):
+        self.is_speaking = False
+
+
+def _require_pyaudio():
+    try:
+        import pyaudio  # type: ignore
+    except ImportError as err:
+        raise RuntimeError(
+            "PyAudio fallback requested but 'pyaudio' is not installed. "
+            "Install PyAudio in the runtime image to use local mic/speaker mode."
+        ) from err
+    return pyaudio
+
 
 class Go2RTCSpeakerTrack(MediaStreamTrack):
     """Audio track fed by Gemini output queue for WebRTC backchannel."""
@@ -120,7 +140,7 @@ class CameraAudioIO:
         self.webrtc_pc = None
         self.speaker_track = None
 
-    async def start_ffmpeg(self, mic_queue: asyncio.Queue, shutdown_event: asyncio.Event):
+    async def start_mic(self, mic_queue: asyncio.Queue, shutdown_event: asyncio.Event):
         """Receive camera mic audio as 16k mono PCM for Gemini input."""
         ffmpeg_cmd = [
             "ffmpeg",
@@ -177,7 +197,7 @@ class CameraAudioIO:
                         mic_queue.get_nowait()
                     except asyncio.QueueEmpty:
                         pass
-                await mic_queue.put({"data": data, "mime_type": "audio/pcm"})
+                await mic_queue.put({"data": data, "mime_type": "audio/pcm;rate=16000"})
 
             if self.ffmpeg_process and self.ffmpeg_process.returncode is None:
                 self.ffmpeg_process.terminate()
@@ -194,7 +214,7 @@ class CameraAudioIO:
                 logger.warning(f"Restarting RTSP reader in 1.0s (restart #{rtsp_restart_count})")
                 await asyncio.sleep(1.0)
 
-    async def start_webrtc(self, speaker_queue: asyncio.Queue, shutdown_event: asyncio.Event):
+    async def start_speaker(self, speaker_queue: asyncio.Queue, shutdown_event: asyncio.Event):
         """Setup WebRTC backchannel for speaker."""
         logger.info("Connecting go2rtc WebRTC backchannel...")
         self.webrtc_pc = RTCPeerConnection()
@@ -247,3 +267,135 @@ class CameraAudioIO:
 
         if self.webrtc_pc:
             await self.webrtc_pc.close()
+
+    # Backward-compatible aliases while callers migrate to clearer names.
+    async def start_ffmpeg(self, mic_queue: asyncio.Queue, shutdown_event: asyncio.Event):
+        await self.start_mic(mic_queue, shutdown_event)
+
+    async def start_webrtc(self, speaker_queue: asyncio.Queue, shutdown_event: asyncio.Event):
+        await self.start_speaker(speaker_queue, shutdown_event)
+
+
+class PyAudioAudioIO:
+    """Local microphone/speaker transport using PyAudio."""
+
+    def __init__(self, camera_config: Optional[dict] = None):
+        _ = camera_config  # Maintain constructor shape parity with CameraAudioIO.
+        self._pa_module = _require_pyaudio()
+        self._pa = self._pa_module.PyAudio()
+        self._mic_stream = None
+        self._speaker_stream = None
+        self._speaker_task = None
+        self.speaker_track = _LocalSpeakerState()
+
+    async def start_mic(self, mic_queue: asyncio.Queue, shutdown_event: asyncio.Event):
+        """Read from local system microphone as 16k mono PCM."""
+        logger.info("Starting local PyAudio microphone input")
+        self._mic_stream = self._pa.open(
+            format=self._pa_module.paInt16,
+            channels=CHANNELS,
+            rate=GEMINI_INPUT_RATE,
+            input=True,
+            frames_per_buffer=CHUNK_SIZE,
+        )
+
+        while not shutdown_event.is_set():
+            try:
+                data = await asyncio.to_thread(
+                    self._mic_stream.read,
+                    CHUNK_SIZE,
+                    exception_on_overflow=False,
+                )
+            except Exception as err:
+                logger.warning(f"PyAudio mic read failed: {err}")
+                await asyncio.sleep(0.1)
+                continue
+
+            if not data:
+                continue
+
+            # Gemini expects little-endian int16 PCM; enforce frame alignment.
+            if len(data) % SAMPLE_WIDTH != 0:
+                data = data[: len(data) - (len(data) % SAMPLE_WIDTH)]
+                if not data:
+                    continue
+
+            if mic_queue.full():
+                try:
+                    mic_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            await mic_queue.put({"data": data, "mime_type": "audio/pcm;rate=16000"})
+
+    async def start_speaker(self, speaker_queue: asyncio.Queue, shutdown_event: asyncio.Event):
+        """Initialize speaker output and run playback worker in background."""
+        logger.info("Starting local PyAudio speaker output")
+        self._speaker_stream = self._pa.open(
+            format=self._pa_module.paInt16,
+            channels=CHANNELS,
+            rate=GEMINI_OUTPUT_RATE,
+            output=True,
+            frames_per_buffer=GEMINI_OUTPUT_RATE // 50,  # 20ms
+        )
+        # CameraAudioIO's start_speaker performs setup and returns; mirror that behavior
+        # so CameraSession can continue to launch mic+LLM tasks.
+        self._speaker_task = asyncio.create_task(
+            self._speaker_playback_loop(speaker_queue, shutdown_event)
+        )
+
+    async def _speaker_playback_loop(
+        self, speaker_queue: asyncio.Queue, shutdown_event: asyncio.Event
+    ):
+        """Consume Gemini speaker queue and write PCM to local output device."""
+        logger.info("PyAudio speaker playback loop started")
+
+        while not shutdown_event.is_set():
+            try:
+                data = await asyncio.wait_for(speaker_queue.get(), timeout=0.2)
+            except asyncio.TimeoutError:
+                self.speaker_track.is_speaking = False
+                continue
+            except Exception as err:
+                logger.warning(f"PyAudio speaker queue read failed: {err}")
+                self.speaker_track.is_speaking = False
+                continue
+
+            if not data:
+                self.speaker_track.is_speaking = False
+                continue
+
+            self.speaker_track.is_speaking = True
+            try:
+                await asyncio.to_thread(self._speaker_stream.write, data)
+            except Exception as err:
+                logger.warning(f"PyAudio speaker write failed: {err}")
+            finally:
+                self.speaker_track.is_speaking = False
+
+    async def cleanup(self):
+        logger.info("Cleaning up PyAudio IO...")
+        if self._speaker_task:
+            self._speaker_task.cancel()
+            await asyncio.gather(self._speaker_task, return_exceptions=True)
+            self._speaker_task = None
+
+        try:
+            if self._mic_stream:
+                await asyncio.to_thread(self._mic_stream.stop_stream)
+                await asyncio.to_thread(self._mic_stream.close)
+                self._mic_stream = None
+        except Exception as err:
+            logger.warning(f"PyAudio mic cleanup failed: {err}")
+
+        try:
+            if self._speaker_stream:
+                await asyncio.to_thread(self._speaker_stream.stop_stream)
+                await asyncio.to_thread(self._speaker_stream.close)
+                self._speaker_stream = None
+        except Exception as err:
+            logger.warning(f"PyAudio speaker cleanup failed: {err}")
+
+        try:
+            await asyncio.to_thread(self._pa.terminate)
+        except Exception as err:
+            logger.warning(f"PyAudio terminate failed: {err}")

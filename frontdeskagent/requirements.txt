@@ -4,3 +4,4 @@ av
 google-genai
 google-crc32c
 numpy
+pyaudio

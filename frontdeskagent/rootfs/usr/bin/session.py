@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from audio import CameraAudioIO
+from audio import CameraAudioIO, PyAudioAudioIO
 from llm import GeminiAgent
 
 logger = logging.getLogger("session")
@@ -12,7 +12,11 @@ class CameraSession:
         self.camera_name = camera_config.get("camera_name", camera_id)
         self.ha_client = ha_client
 
-        self.audio_io = CameraAudioIO(camera_config)
+        if camera_config:
+            self.audio_io = CameraAudioIO(camera_config)
+        else:
+            logger.info("No camera config provided; using local PyAudio audio backend.")
+            self.audio_io = PyAudioAudioIO(camera_config)
         self.llm_agent = GeminiAgent(
             api_key=gemini_api_key,
             model=model,
@@ -31,10 +35,10 @@ class CameraSession:
             await self.ha_client.set_camera_state(self.camera_id, "active")
 
             # Start WebRTC first to get the speaker track
-            await self.audio_io.start_webrtc(self.speaker_queue, self.shutdown_event)
+            await self.audio_io.start_speaker(self.speaker_queue, self.shutdown_event)
 
             async with asyncio.TaskGroup() as tg:
-                tg.create_task(self.audio_io.start_ffmpeg(self.mic_queue, self.shutdown_event))
+                tg.create_task(self.audio_io.start_mic(self.mic_queue, self.shutdown_event))
                 tg.create_task(self.llm_agent.run(self.mic_queue, self.speaker_queue, self.audio_io.speaker_track, home_status))
 
                 # Stop session when one of these happens:
@@ -51,6 +55,16 @@ class CameraSession:
                     if timeout_task in done:
                         logger.warning(
                             f"Session timeout reached ({CONVERSATION_TIMEOUT_SECONDS}s) for camera: {self.camera_name}"
+                        )
+                    elif llm_done_task in done:
+                        logger.info(
+                            "Session ending because model requested shutdown for camera: %s",
+                            self.camera_name,
+                        )
+                    elif shutdown_task in done:
+                        logger.info(
+                            "Session ending due to external shutdown/cancel for camera: %s",
+                            self.camera_name,
                         )
 
                     self.shutdown_event.set()

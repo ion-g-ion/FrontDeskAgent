@@ -1,5 +1,19 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
+## 0.9.7
+
+- Add optional local PyAudio backend (`PyAudioAudioIO`) for microphone/speaker operation when no camera config is provided.
+- Rename audio backend runtime methods to clearer, unified names: `start_mic` and `start_speaker` (with backward-compatible aliases kept for camera RTC path).
+- Add standalone runner script (`rootfs/usr/bin/run_pyaudio_session.py`) to start a `CameraSession` without Home Assistant event wiring.
+- Add Home Assistant client offline/fake mode improvements:
+  - graceful default responses when HA is unavailable,
+  - in-process fake server behavior (logs payloads and returns dummy values, no outbound HTTP forwarding).
+- Improve Gemini Live request robustness:
+  - normalize outgoing mic audio payloads as explicit PCM blobs with sample-rate mime metadata,
+  - send initial startup prompt through realtime text input path.
+- Add explicit logs for model-driven conversation completion (`final_response`) and clear session-end reason logging (model-finished vs timeout vs manual cancel).
+- Add `pyaudio` to Python requirements for local audio fallback support.
+
 ## 0.9.6
 
 - Add Gemini Live session resumption and reconnect handling for `goAway` and `1011` disconnects.

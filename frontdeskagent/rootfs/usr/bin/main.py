@@ -18,9 +18,10 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MODEL = "gemini-live-2.5-flash-native-audio"
+DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 SUPPORTED_MODELS = {
     DEFAULT_MODEL,
+    "gemini-live-2.5-flash-native-audio",
     "gemini-2.5-flash-native-audio-preview-12-2025",
 }
 OPTIONS_PATH = Path(os.getenv("FRONTDESK_OPTIONS_PATH", "/data/options.json"))

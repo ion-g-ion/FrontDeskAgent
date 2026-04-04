@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: FrontDeskAgent
-version: "0.9.6"
+version: "0.9.7"
 slug: frontdeskagent
 homeassistant_api: true
 description: FrontDeskAgent add-on
@@ -15,7 +15,7 @@ map:
   - config:rw
 options:
   gemini_api_key: ""
-  model: "gemini-live-2.5-flash-native-audio"
+  model: "gemini-3.1-flash-live-preview"
   cameras: []
   prompt:
     identity: |-
@@ -47,7 +47,7 @@ options:
       Speak English.
 schema:
   gemini_api_key: "password"
-  model: "match(^(gemini-live-2.5-flash-native-audio|gemini-2.5-flash-native-audio-preview-12-2025)$)"
+  model: "match(^(gemini-3.1-flash-live-preview|gemini-live-2.5-flash-native-audio|gemini-2.5-flash-native-audio-preview-12-2025)$)"
   cameras:
     - camera_name: "str"
       go2rtc_host: "str"

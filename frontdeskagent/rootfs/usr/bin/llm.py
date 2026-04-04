@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 
 logger = logging.getLogger("llm")
+GEMINI_INPUT_SAMPLE_RATE = 16000
 
 # Tool Declarations
 final_response_declaration = {
@@ -96,11 +97,11 @@ class GeminiAgent:
             fetch_history_declaration
         ]}]
 
-        self.config = {
-            "response_modalities": ["AUDIO"],
-            "system_instruction": self.system_instruction,
-            "tools": self.tools,
-        }
+        self.config = types.LiveConnectConfig(
+            response_modalities=[types.Modality.AUDIO],
+            system_instruction=types.Content(parts=[types.Part(text=self.system_instruction)]),
+            tools=self.tools,
+        )
 
     @staticmethod
     def _extract_value(container, *names):
@@ -128,13 +129,37 @@ class GeminiAgent:
         return self._extract_value(go_away, "time_left", "timeLeft")
 
     def _build_connect_config(self):
-        connect_config = dict(self.config)
         session_resumption = {}
         if self._session_resumption_handle:
             session_resumption["handle"] = self._session_resumption_handle
         # Always include this so the server emits SessionResumptionUpdate tokens.
-        connect_config["session_resumption"] = session_resumption
-        return connect_config
+        return types.LiveConnectConfig(
+            response_modalities=self.config.response_modalities,
+            system_instruction=self.config.system_instruction,
+            tools=self.config.tools,
+            session_resumption=session_resumption,
+        )
+
+    def _build_audio_blob(self, msg) -> types.Blob:
+        """Normalize mic chunks into an explicit PCM blob for Live API input."""
+        if isinstance(msg, dict):
+            data = msg.get("data", b"")
+            mime_type = msg.get("mime_type") or "audio/pcm"
+        elif isinstance(msg, (bytes, bytearray)):
+            data = bytes(msg)
+            mime_type = "audio/pcm"
+        else:
+            raise ValueError(f"Unsupported mic payload type: {type(msg).__name__}")
+
+        if isinstance(data, bytearray):
+            data = bytes(data)
+        if not isinstance(data, bytes):
+            raise ValueError("Mic payload data must be bytes.")
+
+        if mime_type.startswith("audio/pcm") and "rate=" not in mime_type:
+            mime_type = f"audio/pcm;rate={GEMINI_INPUT_SAMPLE_RATE}"
+
+        return types.Blob(data=data, mime_type=mime_type)
 
     async def _handle_tool_call(self, session, tool_call):
         function_responses = []
@@ -147,6 +172,11 @@ class GeminiAgent:
                 if fc.name == "final_response":
                     summary = args.get("summary", "")
                     await self.ha_client.add_interaction_todo(self.camera_name, summary)
+                    logger.info(
+                        "Model requested session finish via final_response for camera=%s summary=%s",
+                        self.camera_name,
+                        summary,
+                    )
                     result = {"status": "logged", "summary": summary}
                     should_close_session = True
                 elif fc.name == "notify_owner":
@@ -170,6 +200,7 @@ class GeminiAgent:
         await session.send_tool_response(function_responses=function_responses)
 
         if should_close_session:
+            logger.info("Setting Gemini shutdown_requested after final_response")
             self.shutdown_requested.set()
 
     async def run(self, mic_queue: asyncio.Queue, speaker_queue: asyncio.Queue, speaker_track, home_status: str):
@@ -189,9 +220,7 @@ class GeminiAgent:
                             f"Someone rang the doorbell. The homeowner is currently {home_status}. "
                             "Start the conversation politely and immediately."
                         )
-                        await session.send_client_content(
-                            turns={"parts": [{"text": initial_message}]}
-                        )
+                        await session.send_realtime_input(text=initial_message)
                         self._initial_message_sent = True
 
                     async def send_audio():
@@ -205,7 +234,7 @@ class GeminiAgent:
                                 # HALF-DUPLEX AEC Alternative: don't send mic audio if model is speaking
                                 if speaker_track and getattr(speaker_track, "is_speaking", False):
                                     continue
-                                await session.send_realtime_input(audio=msg)
+                                await session.send_realtime_input(audio=self._build_audio_blob(msg))
                             except Exception as e:
                                 logger.warning(f"send_realtime_input failed: {e}")
                                 reconnect_requested.set()
