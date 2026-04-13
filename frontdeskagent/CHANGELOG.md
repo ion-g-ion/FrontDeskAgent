@@ -1,5 +1,9 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
+## 0.9.8
+
+- Remove `pyaudio` from add-on install requirements so Home Assistant builds do not fail trying to compile it in the Alpine base image.
+
 ## 0.9.7
 
 - Add optional local PyAudio backend (`PyAudioAudioIO`) for microphone/speaker operation when no camera config is provided.
