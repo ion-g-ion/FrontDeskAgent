@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+from datetime import datetime
 from typing import Any, AsyncGenerator
 
 logger = logging.getLogger("ha_client")
@@ -106,12 +107,15 @@ class HomeAssistantClient:
 
     async def add_interaction_todo(self, camera_name: str, summary: str) -> None:
         """Add the summary to todo.frontdeskagent_past_conversations."""
+        timestamped_summary = (
+            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {summary}"
+        )
         if self.fake_server_enabled:
             self._fake_log(
                 "add_interaction_todo",
-                {"camera_name": camera_name, "summary": summary},
+                {"camera_name": camera_name, "summary": timestamped_summary},
             )
-            self._fake_history.setdefault(camera_name, []).append(summary)
+            self._fake_history.setdefault(camera_name, []).append(timestamped_summary)
             return
 
         if not self._ha_available():
@@ -120,7 +124,7 @@ class HomeAssistantClient:
         url = f"{self.api_base}/services/todo/add_item"
         payload = {
             "entity_id": PAST_CONVERSATIONS_ENTITY,
-            "item": f"{camera_name}: {summary}"
+            "item": f"{camera_name}: {timestamped_summary}"
         }
         async with aiohttp.ClientSession(timeout=self.http_timeout) as session:
             try:

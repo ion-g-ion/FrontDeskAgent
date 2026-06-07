@@ -1,5 +1,13 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
+## 0.9.9
+
+- Add connection timeout (`-stimeout 5000000`) and wallclock timestamping with asynchronous audio resampling to the RTSP FFmpeg input parameters to prevent audio lag and handle dropped streams robustly.
+- Prepend local timestamps (`[YYYY-MM-DD HH:MM:SS]`) to all Home Assistant conversation todo items.
+- Redesign session task lifecycle tracking and cancellation to ensure that microphone and LLM worker tasks are explicitly and immediately cancelled on session exit, preventing orphaned background tasks and lingering RTSP stream resources.
+- Log specific session termination reasons (timeout, manual cancel, external shutdown) directly to Home Assistant todo lists.
+- Update icon and logo images.
+
 ## 0.9.8
 
 - Remove `pyaudio` from add-on install requirements so Home Assistant builds do not fail trying to compile it in the Alpine base image.
